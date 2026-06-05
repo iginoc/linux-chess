@@ -83,6 +83,10 @@ int main()
     sf::Clock aiClock; // Per dare un leggero ritardo alla mossa dell'AI (se attiva)
     bool aiThinking = (playerSide == -1); // L'AI pensa subito se il giocatore è Nero
 
+    // Vettori per i pezzi catturati
+    std::vector<int> whiteCapturedPieces; // Pezzi bianchi catturati (da neri)
+    std::vector<int> blackCapturedPieces; // Pezzi neri catturati (da bianchi)
+
     // Variabili per l'animazione del pezzo AI
     bool isAiAnimating = false;
     int aiAnimFR = -1, aiAnimFC = -1, aiAnimTR = -1, aiAnimTC = -1;
@@ -261,9 +265,47 @@ int main()
         return score;
     };
 
+    // Ricerca di Quiete per evitare l'effetto orizzonte
+    std::function<int(int, int, bool)> quiesce = [&](int alpha, int beta, bool isMaximizing) -> int {
+        int standPat = evaluateBoard();
+        if (isMaximizing) {
+            if (standPat >= beta) return beta;
+            if (alpha < standPat) alpha = standPat;
+        } else {
+            if (standPat <= alpha) return alpha;
+            if (beta > standPat) beta = standPat;
+        }
+
+        int side = isMaximizing ? 1 : -1;
+        for (int r = 0; r < 8; r++) {
+            for (int c = 0; c < 8; c++) {
+                if (board[r][c] * side > 0) {
+                    for (int tr = 0; tr < 8; tr++) {
+                        for (int tc = 0; tc < 8; tc++) {
+                            if (board[tr][tc] != 0 && isMoveLegal(r, c, tr, tc)) { // Solo catture
+                                int saved = board[tr][tc];
+                                board[tr][tc] = board[r][c]; board[r][c] = 0;
+                                int score = quiesce(alpha, beta, !isMaximizing);
+                                board[r][c] = board[tr][tc]; board[tr][tc] = saved;
+                                if (isMaximizing) {
+                                    if (score >= beta) return beta;
+                                    if (score > alpha) alpha = score;
+                                } else {
+                                    if (score <= alpha) return alpha;
+                                    if (score < beta) beta = score;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return isMaximizing ? alpha : beta;
+    };
+
     // Algoritmo Minimax con Alpha-Beta Pruning
     std::function<int(int, int, int, bool)> minimax = [&](int depth, int alpha, int beta, bool isMaximizing) -> int {
-        if (depth == 0) return evaluateBoard();
+        if (depth == 0) return quiesce(alpha, beta, isMaximizing);
 
         int side = isMaximizing ? 1 : -1;
         if (!hasLegalMoves(side)) {
@@ -323,6 +365,15 @@ int main()
     auto applyMove = [&](int fR, int fC, int tR, int tC) {
         int piece = board[fR][fC];
         
+        // Gestione pezzi catturati
+        int capturedPiece = board[tR][tC];
+        if (capturedPiece != 0) {
+            if (capturedPiece > 0) { // Pezzo bianco catturato
+                blackCapturedPieces.push_back(capturedPiece);
+            } else { // Pezzo nero catturato
+                whiteCapturedPieces.push_back(std::abs(capturedPiece));
+            }
+        }
         // Gestione En Passant
         if (std::abs(piece) == 1 && tC == enPassantCol && board[tR][tC] == 0 && tC != fC) {
             board[fR][tC] = 0;
@@ -619,6 +670,66 @@ int main()
             window.draw(dragSprite);
         }
         
+        // Disegna i pezzi catturati a destra della scacchiera
+        unsigned int capturedAreaStartX = offsetX + boardWidth + squareSize / 2;
+        unsigned int capturedPieceSize = squareSize / 2;
+        unsigned int capturedPiecePadding = 10;
+
+        // Disegna uno sfondo marrone per i pezzi catturati (migliora la visibilità dei pezzi neri)
+        sf::RectangleShape capturedBg(sf::Vector2f(static_cast<float>(capturedPieceSize * 2 + capturedPiecePadding + 20), static_cast<float>(boardWidth)));
+        capturedBg.setPosition(sf::Vector2f(static_cast<float>(capturedAreaStartX - 10), static_cast<float>(offsetY)));
+        capturedBg.setFillColor(sf::Color(60, 40, 30)); // Marrone scuro per contrasto
+        window.draw(capturedBg);
+
+        unsigned int currentY_playerCaptured = offsetY;
+        unsigned int currentY_opponentCaptured = offsetY;
+
+        unsigned int playerCapturedColX = capturedAreaStartX;
+        unsigned int opponentCapturedColX = capturedAreaStartX + capturedPieceSize + capturedPiecePadding;
+
+        // Disegna i pezzi catturati dal giocatore (pezzi dell'avversario)
+        // Se il giocatore è Bianco (playerSide == 1), ha catturato pezzi Neri (blackCapturedPieces)
+        // Se il giocatore è Nero (playerSide == -1), ha catturato pezzi Bianchi (whiteCapturedPieces)
+        std::vector<int>& playerCapturedPiecesList = (playerSide == 1) ? blackCapturedPieces : whiteCapturedPieces;
+        // Il segno per la texture dipende dal colore del pezzo catturato.
+        // Se il giocatore è Bianco, i pezzi catturati sono Neri (ID negativo).
+        // Se il giocatore è Nero, i pezzi catturati sono Bianchi (ID positivo).
+        int textureSignForPlayerCaptured = (playerSide == 1) ? -1 : 1;
+
+        for (int p_type : playerCapturedPiecesList) {
+            // Assicurati che la texture esista prima di tentare di disegnarla
+            if (textures.count(p_type * textureSignForPlayerCaptured)) {
+                sf::Sprite sprite(textures[p_type * textureSignForPlayerCaptured]);
+                sf::Vector2u texSize = textures[p_type * textureSignForPlayerCaptured].getSize();
+                float scale = (float)capturedPieceSize / texSize.x;
+                sprite.setScale(sf::Vector2f(scale, scale));
+                sprite.setPosition(sf::Vector2f(static_cast<float>(playerCapturedColX), static_cast<float>(currentY_playerCaptured)));
+                window.draw(sprite);
+                currentY_playerCaptured += capturedPieceSize;
+            }
+        }
+
+        // Disegna i pezzi catturati dall'avversario (pezzi del giocatore)
+        // Se il giocatore è Bianco (playerSide == 1), l'avversario ha catturato pezzi Bianchi (whiteCapturedPieces)
+        // Se il giocatore è Nero (playerSide == -1), l'avversario ha catturato pezzi Neri (blackCapturedPieces)
+        std::vector<int>& opponentCapturedPiecesList = (playerSide == 1) ? whiteCapturedPieces : blackCapturedPieces;
+        // Il segno per la texture dipende dal colore del pezzo catturato.
+        // Se il giocatore è Bianco, l'avversario ha catturato pezzi Bianchi (ID positivo).
+        // Se il giocatore è Nero, l'avversario ha catturato pezzi Neri (ID negativo).
+        int textureSignForOpponentCaptured = (playerSide == 1) ? 1 : -1;
+
+        for (int p_type : opponentCapturedPiecesList) {
+            if (textures.count(p_type * textureSignForOpponentCaptured)) {
+                sf::Sprite sprite(textures[p_type * textureSignForOpponentCaptured]);
+                sf::Vector2u texSize = textures[p_type * textureSignForOpponentCaptured].getSize();
+                float scale = (float)capturedPieceSize / texSize.x;
+                sprite.setScale(sf::Vector2f(scale, scale));
+                sprite.setPosition(sf::Vector2f(static_cast<float>(opponentCapturedColX), static_cast<float>(currentY_opponentCaptured)));
+                window.draw(sprite);
+                currentY_opponentCaptured += capturedPieceSize;
+            }
+        }
+
         // Logica e Rendering Animazione AI
         if (isAiAnimating) {
             float t = aiClock.getElapsedTime().asSeconds();
