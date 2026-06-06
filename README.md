@@ -5,12 +5,13 @@ Un simulatore di scacchi completo sviluppato in C++ utilizzando la libreria **SF
 ## Funzionalità
 
 - **Regole Complete**: Supporto per Arrocco (lungo e corto), cattura *En Passant* e promozione automatica a Regina.
-- **IA Integrata**: Motore di gioco basato su algoritmo **Minimax con Alpha-Beta Pruning** per una ricerca efficiente delle mosse migliori (profondità di 3 livelli).
+- **IA Integrata**: Motore di gioco basato su algoritmo **Minimax con Alpha-Beta Pruning** e **Quiescence Search** per evitare l'effetto orizzonte durante le catture (profondità di ricerca ottimizzata).
 - **Interfaccia Dinamica**: 
   - Sistema di trascinamento dei pezzi (*Drag and Drop*).
-  - Effetti visivi come ombre, scie di movimento e Re lampeggiante in caso di scacco matto.
+  - Effetti visivi avanzati: ombre dinamiche, scie di movimento (ghosting) e Re lampeggiante in caso di scacco.
   - Scacchiera responsiva che rimane quadrata e centrata al ridimensionamento.
-- **Prospettiva Variabile**: Assegnazione casuale del colore (Bianco o Nero) all'avvio con specchiamento automatico della scacchiera.
+  - Pannello laterale per la **visualizzazione dei pezzi catturati** con sfondo a contrasto.
+- **Prospettiva Variabile**: Assegnazione casuale del colore all'avvio con rotazione automatica della visuale per il giocatore.
 - **Animazioni**: Movimento fluido dei pezzi controllati dall'IA.
 
 ## Requisiti
